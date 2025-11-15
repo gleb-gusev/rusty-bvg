@@ -2,6 +2,8 @@
 
 Real-time Berlin public transport departure board for Raspberry Pi + LED matrix.
 
+![Demo](docs/demo.png)
+
 ## What it does
 
 - Shows the next 3 departures from S+U Warschauer Str (U-Bahn, S-Bahn and trams)
