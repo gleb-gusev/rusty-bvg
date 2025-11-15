@@ -12,7 +12,8 @@ Real-time Berlin public transport departure board for Raspberry Pi + LED matrix.
 
 - Raspberry Pi (I used a Pi 3, but anything with GPIO should work)
 - 64x32 RGB LED Matrix Panel (get the bigger one :)
-- 5V power supply for the matrix (don't skimp on this, it needs power)
+- RGB Matrix Adapter Board
+- 5V power supply for the matrix.
 - Some jumper wires
 
 ## Setup
