@@ -36,6 +36,7 @@ pub struct BvgDisplay {
     matrix: LedMatrix,
     config: DisplayConfig,
     current_index: usize,
+    canvas: Option<LedCanvas>,  // Reuse canvas to avoid memory leaks
 }
 
 #[cfg(feature = "display")]
@@ -57,13 +58,16 @@ impl BvgDisplay {
             matrix, 
             config,
             current_index: 0,
+            canvas: None,  // Canvas will be created on first render
         })
     }
 
     /// Render departures to the LED matrix
     /// Displays 1 departure on 3 lines with smart word wrapping
     pub fn render_departures(&mut self, departures: &[Departure]) {
-        let mut canvas = self.matrix.offscreen_canvas();
+        // Reuse existing canvas or create one on first render
+        let mut canvas = self.canvas.take()
+            .unwrap_or_else(|| self.matrix.offscreen_canvas());
         
         // Clear the canvas (black background)
         canvas.fill(&LedColor { red: 0, green: 0, blue: 0 });
@@ -109,9 +113,10 @@ impl BvgDisplay {
             drop(lines);
         }
 
+        // Swap canvas to display - returns the old displayed canvas
+        // Store it for reuse instead of dropping to prevent memory leaks
         let old_canvas = self.matrix.swap(canvas);
-
-        drop(old_canvas);
+        self.canvas = Some(old_canvas);
     }
     
     /// Move to next departure in the list (cycle)
