@@ -2,6 +2,7 @@ use crate::departure::Departure;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::error::Error;
+use tracing::{info, error, warn, instrument};
 
 // API response structures for VBB HAFAS API
 #[derive(Debug, Deserialize)]
@@ -28,6 +29,7 @@ struct Line {
 
 // Fetch departures for a specific stop
 // stop_id: Station ID (e.g., "900120003" for S+U Warschauer Str.)
+#[instrument(skip(agent))]
 pub fn fetch_departures(agent: &ureq::Agent, stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>> {
     const WARSCHAUER_STOP_ID: &str = "900120003";
     
@@ -37,15 +39,35 @@ pub fn fetch_departures(agent: &ureq::Agent, stop_id: &str) -> Result<Vec<Depart
         return Err(format!("Unsupported stop_id: {}", stop_id).into());
     };
     
-    let response = agent.get(url)
-        .call()
-        .map_err(|e| format!("HTTP error: {}", e))?;
-
-    let body = response.into_string()
-        .map_err(|e| format!("HTTP read error: {}", e))?;
+    info!("Fetching departures from API: {}", url);
+    let start_time = std::time::Instant::now();
     
-    let mut api_response: ApiResponse = serde_json::from_str(&body)
-        .map_err(|e| format!("JSON parse error: {}", e))?;
+    let response = match agent.get(url).call() {
+        Ok(r) => r,
+        Err(e) => {
+            let elapsed = start_time.elapsed();
+            error!(elapsed_ms = elapsed.as_millis(), "HTTP error: {}", e);
+            return Err(format!("HTTP error: {}", e).into());
+        }
+    };
+
+    let body = match response.into_string() {
+        Ok(b) => b,
+        Err(e) => {
+            let elapsed = start_time.elapsed();
+            error!(elapsed_ms = elapsed.as_millis(), "HTTP read error: {}", e);
+            return Err(format!("HTTP read error: {}", e).into());
+        }
+    };
+    
+    let mut api_response: ApiResponse = match serde_json::from_str(&body) {
+        Ok(r) => r,
+        Err(e) => {
+            let elapsed = start_time.elapsed();
+            error!(elapsed_ms = elapsed.as_millis(), "JSON parse error: {}", e);
+            return Err(format!("JSON parse error: {}", e).into());
+        }
+    };
     
     drop(body);
     
@@ -133,6 +155,14 @@ pub fn fetch_departures(agent: &ureq::Agent, stop_id: &str) -> Result<Vec<Depart
     
     // Shrink to fit to free unused capacity immediately
     departures.shrink_to_fit();
+
+    let elapsed = start_time.elapsed();
+    info!(
+        elapsed_ms = elapsed.as_millis(),
+        count = departures.len(),
+        "API request successful, received {} departures",
+        departures.len()
+    );
 
     Ok(departures)
 }

@@ -9,6 +9,8 @@ use embedded_graphics::{
 };
 #[cfg(feature = "display")]
 use rpi_led_matrix::{LedCanvas, LedColor, LedMatrix, LedMatrixOptions};
+#[cfg(feature = "display")]
+use tracing::{info, debug, error};
 
 #[cfg(feature = "display")]
 pub struct DisplayConfig {
@@ -46,13 +48,26 @@ impl BvgDisplay {
     }
 
     pub fn with_config(config: DisplayConfig) -> Result<Self, String> {
+        info!(
+            width = config.width,
+            height = config.height,
+            hardware_mapping = %config.hardware_mapping,
+            "Initializing display with config"
+        );
+
         let mut options = LedMatrixOptions::new();
         options.set_cols(config.width);
         options.set_rows(config.height);
         options.set_hardware_mapping(&config.hardware_mapping);
 
         let matrix = LedMatrix::new(Some(options), None)
-            .map_err(|e| format!("Failed to initialize LED matrix: {}", e))?;
+            .map_err(|e| {
+                let err_msg = format!("Failed to initialize LED matrix: {}", e);
+                error!("{}", err_msg);
+                err_msg
+            })?;
+
+        info!("Display initialized successfully");
 
         Ok(Self { 
             matrix, 
@@ -65,9 +80,27 @@ impl BvgDisplay {
     /// Render departures to the LED matrix
     /// Displays 1 departure on 3 lines with smart word wrapping
     pub fn render_departures(&mut self, departures: &[Departure]) {
+        let is_new_canvas = self.canvas.is_none();
+        
         // Reuse existing canvas or create one on first render
         let mut canvas = self.canvas.take()
-            .unwrap_or_else(|| self.matrix.offscreen_canvas());
+            .unwrap_or_else(|| {
+                debug!("Creating new canvas");
+                self.matrix.offscreen_canvas()
+            });
+        
+        if is_new_canvas {
+            debug!("Canvas created for first render");
+        }
+        
+        let current_index = self.current_index % departures.len().max(1);
+        info!(
+            departure_index = current_index,
+            total_departures = departures.len(),
+            "Rendering departure {} of {}",
+            current_index + 1,
+            departures.len()
+        );
         
         // Clear the canvas (black background)
         canvas.fill(&LedColor { red: 0, green: 0, blue: 0 });
@@ -116,12 +149,19 @@ impl BvgDisplay {
         // Swap canvas to display - returns the old displayed canvas
         // Store it for reuse instead of dropping to prevent memory leaks
         let old_canvas = self.matrix.swap(canvas);
+        debug!("Canvas swapped, displaying new content");
         self.canvas = Some(old_canvas);
     }
     
     /// Move to next departure in the list (cycle)
     pub fn next_departure(&mut self, total: usize) {
+        let old_index = self.current_index;
         self.current_index = (self.current_index + 1) % total;
+        debug!(
+            old_index = old_index,
+            new_index = self.current_index,
+            "Cycling to next departure"
+        );
     }
     
     pub fn current_index(&self) -> usize {
