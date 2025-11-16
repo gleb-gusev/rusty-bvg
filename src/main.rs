@@ -132,6 +132,11 @@ fn main() {
 
     let mut last_fetch = std::time::Instant::now();
     let mut last_display_change = std::time::Instant::now();
+    let mut needs_render = true;
+
+    if !departures.is_empty() {
+        display.render_departures(&departures);
+    }
 
     loop {
         // Fetch new data every 20 seconds
@@ -149,6 +154,7 @@ fn main() {
                         for dep in &departures {
                             println!("  - {}", dep.format());
                         }
+                        needs_render = true; // New data, need to render
                     } else {
                         println!("[{}] ⚠ No departures available", 
                             chrono::Local::now().format("%H:%M:%S")
@@ -165,14 +171,6 @@ fn main() {
             last_fetch = std::time::Instant::now();
         }
 
-        // Render current departure
-        if !departures.is_empty() {
-            display.render_departures(&departures);
-        } else {
-            // Show "waiting" message if no data yet
-            // (display stays black for now)
-        }
-
         // Change display every 10 seconds
         if last_display_change.elapsed() >= Duration::from_secs(10) {
             if departures.len() > 1 {
@@ -183,12 +181,19 @@ fn main() {
                     chrono::Local::now().format("%H:%M:%S"),
                     current_dep.format()
                 );
+                needs_render = true; // Changed departure, need to render
             }
             last_display_change = std::time::Instant::now();
         }
 
-        // Small sleep to avoid busy loop
-        thread::sleep(Duration::from_millis(100));
+        // Render only when needed (not every loop iteration!)
+        if needs_render && !departures.is_empty() {
+            display.render_departures(&departures);
+            needs_render = false;
+        }
+
+        // Sleep to avoid busy loop
+        thread::sleep(Duration::from_millis(500)); // Increased from 100ms to 500ms
     }
 }
 
