@@ -103,10 +103,15 @@ impl BvgDisplay {
             let time_text = format!("{} min", departure.minutes);
             let time_y = start_y + ((last_line_index + 1) as i32 * line_height);
             self.draw_text(&mut canvas, &time_text, 2, time_y, text_color);
+            
+            drop(time_text);
+            drop(full_text);
+            drop(lines);
         }
 
         // Swap canvas to display
-        let _ = self.matrix.swap(canvas);
+        let old_canvas = self.matrix.swap(canvas);
+        drop(old_canvas);
     }
     
     /// Move to next departure in the list (cycle)
@@ -180,6 +185,9 @@ impl BvgDisplay {
         
         // Draw to canvas (using embedded-graphics integration)
         let _ = text_drawable.draw(canvas);
+        
+        drop(text_drawable);
+        drop(style);
     }
 
     pub fn dimensions(&self) -> (u32, u32) {

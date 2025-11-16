@@ -29,14 +29,23 @@ struct Line {
 // Fetch departures for a specific stop
 // stop_id: Station ID (e.g., "900120003" for S+U Warschauer Str.)
 pub fn fetch_departures(stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>> {
-    const BASE_URL: &str = "https://v6.vbb.transport.rest";
-    let url = format!("{}/stops/{}/departures?duration=15", BASE_URL, stop_id);
+    const WARSCHAUER_STOP_ID: &str = "900120003";
     
-    // ureq is simpler - direct call with timeout
-    let response = ureq::get(&url)
+    let url = if stop_id == WARSCHAUER_STOP_ID {
+        "https://v6.vbb.transport.rest/stops/900120003/departures?duration=15"
+    } else {
+        return Err(format!("Unsupported stop_id: {}", stop_id).into());
+    };
+    
+    let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(10))
+        .build();
+    
+    let response = agent.get(url)
         .call()
         .map_err(|e| format!("HTTP error: {}", e))?;
+    
+    drop(agent);
 
     let mut api_response: ApiResponse = response.into_json()
         .map_err(|e| format!("JSON parse error: {}", e))?;
@@ -52,18 +61,22 @@ pub fn fetch_departures(stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>>
         // Skip if missing required fields
         let direction = match api_dep.direction {
             Some(d) => d,
-            None => continue,  // Skip departures without destination
+            None => continue,
         };
         
         // Skip departures going TO Warschauer Str. (we're already here!)
         // TODO: make this configurable for other stations
         if direction.contains("Warschauer") {
+            drop(direction);
             continue;
         }
         
         let when = match api_dep.when {
             Some(w) => w,
-            None => continue,  // Skip departures without time
+            None => {
+                drop(direction);
+                continue;
+            }
         };
         
         let line_name = &api_dep.line.name;
@@ -80,6 +93,8 @@ pub fn fetch_departures(stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>>
            line_name == "S41" ||             // Ringbahn clockwise
            line_name == "S42" ||             // Ringbahn counter-clockwise
            line_name.chars().all(|c| c.is_numeric()) {  // Buses (pure numbers)
+            drop(direction);
+            drop(when);
             continue;
         }
         
@@ -94,12 +109,23 @@ pub fn fetch_departures(stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>>
                 // Clean up destination name (optimized: single pass where possible)
                 let destination = clean_destination(&direction);
                 
+                let line_name = api_dep.line.name;
+                
+                drop(direction);
+                drop(when);
+                
                 departures.push(Departure::new(
-                    api_dep.line.name,
+                    line_name,
                     destination,
                     minutes as u32,
                 ));
+            } else {
+                drop(direction);
+                drop(when);
             }
+        } else {
+            drop(direction);
+            drop(when);
         }
     }
 
