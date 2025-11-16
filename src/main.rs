@@ -1,8 +1,6 @@
 use rusty_bvg::fetch_warschauer_str;
 #[allow(unused_imports)]
 use rusty_bvg::Departure;
-#[cfg(debug_assertions)]
-use std::io::Write;
 use std::thread;
 use std::time::Duration;
 
@@ -64,11 +62,15 @@ fn main() {
     debug_log!("Fetching departures every 20 seconds...");
     debug_log!("Press Ctrl+C to exit\n");
 
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(10))
+        .build();
+
     #[cfg(debug_assertions)]
     let mut last_departures: Vec<Departure> = Vec::new();
 
     loop {
-        match fetch_warschauer_str() {
+        match fetch_warschauer_str(&agent) {
             Ok(departures) => {
                 if !departures.is_empty() {
                     #[cfg(debug_assertions)]
@@ -110,6 +112,10 @@ fn main() {
 
     debug_log!("✓ API ready");
 
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(10))
+        .build();
+
     // Initialize display
     let mut display = match BvgDisplay::new() {
         Ok(d) => {
@@ -140,7 +146,7 @@ fn main() {
         let _ = std::io::stderr().flush();
     }
     debug_log!("Fetching initial data...");
-    let mut departures: Vec<Departure> = match fetch_warschauer_str() {
+    let mut departures: Vec<Departure> = match fetch_warschauer_str(&agent) {
         Ok(new_departures) => {
             if !new_departures.is_empty() {
                 let departures = new_departures.into_iter().take(3).collect::<Vec<_>>();
@@ -185,7 +191,7 @@ fn main() {
             {
                 let _ = std::io::stdout().flush();
             }
-            match fetch_warschauer_str() {
+            match fetch_warschauer_str(&agent) {
                 Ok(mut new_departures) => {
                     if !new_departures.is_empty() {
                         // Take only first 3 and immediately free the rest

@@ -3,7 +3,10 @@ use rusty_bvg::{fetch_warschauer_str, Departure};
 #[test]
 fn test_api_fetch_exists() {
     // Test that fetch function exists (actual call would need network)
-    let _ = fetch_warschauer_str();
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(10))
+        .build();
+    let _ = fetch_warschauer_str(&agent);
 }
 
 #[test]

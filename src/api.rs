@@ -28,7 +28,7 @@ struct Line {
 
 // Fetch departures for a specific stop
 // stop_id: Station ID (e.g., "900120003" for S+U Warschauer Str.)
-pub fn fetch_departures(stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>> {
+pub fn fetch_departures(agent: &ureq::Agent, stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>> {
     const WARSCHAUER_STOP_ID: &str = "900120003";
     
     let url = if stop_id == WARSCHAUER_STOP_ID {
@@ -37,15 +37,9 @@ pub fn fetch_departures(stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>>
         return Err(format!("Unsupported stop_id: {}", stop_id).into());
     };
     
-    let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(10))
-        .build();
-    
     let response = agent.get(url)
         .call()
         .map_err(|e| format!("HTTP error: {}", e))?;
-    
-    drop(agent);
 
     let mut api_response: ApiResponse = response.into_json()
         .map_err(|e| format!("JSON parse error: {}", e))?;
@@ -188,8 +182,8 @@ fn clean_destination(dest: &str) -> String {
 
 // Hardcoded for Warschauer Str for now
 // TODO: make station ID configurable via config file or CLI args
-pub fn fetch_warschauer_str() -> Result<Vec<Departure>, Box<dyn Error>> {
-    fetch_departures("900120003")
+pub fn fetch_warschauer_str(agent: &ureq::Agent) -> Result<Vec<Departure>, Box<dyn Error>> {
+    fetch_departures(agent, "900120003")
 }
 
 #[cfg(test)]
@@ -200,7 +194,10 @@ mod tests {
     fn test_api_fetch() {
         // Test that fetch function exists and can be called
         // (actual API call would require network, so just check it compiles)
-        let _ = fetch_warschauer_str();
+        let agent = ureq::AgentBuilder::new()
+            .timeout(std::time::Duration::from_secs(10))
+            .build();
+        let _ = fetch_warschauer_str(&agent);
     }
 
     #[test]
