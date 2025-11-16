@@ -185,9 +185,6 @@ impl BvgDisplay {
         
         // Draw to canvas (using embedded-graphics integration)
         let _ = text_drawable.draw(canvas);
-        
-        drop(text_drawable);
-        drop(style);
     }
 
     pub fn dimensions(&self) -> (u32, u32) {
