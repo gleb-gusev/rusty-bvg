@@ -132,7 +132,7 @@ fn clean_destination(dest: &str) -> String {
     }
     
     // Process rest of string, skipping " (Berlin)" and " Bhf"
-    let mut buffer = String::new();
+    let mut buffer = String::with_capacity(dest.len());
     while let Some(ch) = chars.next() {
         buffer.push(ch);
         
@@ -156,6 +156,7 @@ fn clean_destination(dest: &str) -> String {
     }
     
     result.push_str(&buffer);
+    drop(buffer); // Explicitly free buffer
     result
 }
 

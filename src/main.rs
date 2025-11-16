@@ -193,7 +193,8 @@ fn main() {
                             new_departures.truncate(3);
                             new_departures.shrink_to_fit();
                         }
-                        departures = new_departures;
+                        // Explicitly free old departures before replacing
+                        drop(std::mem::replace(&mut departures, new_departures));
                         debug_log!("✓ Fetched {} departures", departures.len());
                         #[cfg(debug_assertions)]
                         {

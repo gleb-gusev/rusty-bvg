@@ -157,10 +157,14 @@ impl BvgDisplay {
         // Add remaining text
         if !current_line.is_empty() && lines.len() < max_lines {
             lines.push(current_line);
+        } else if current_line.is_empty() {
+            drop(current_line);
         }
         
-        // Pad with empty lines if needed
-        lines.resize(max_lines, String::new());
+        // Pad with empty lines if needed (avoid resize to prevent allocations)
+        while lines.len() < max_lines {
+            lines.push(String::new());
+        }
         
         lines
     }
