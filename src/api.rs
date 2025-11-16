@@ -41,8 +41,13 @@ pub fn fetch_departures(agent: &ureq::Agent, stop_id: &str) -> Result<Vec<Depart
         .call()
         .map_err(|e| format!("HTTP error: {}", e))?;
 
-    let mut api_response: ApiResponse = response.into_json()
+    let body = response.into_string()
+        .map_err(|e| format!("HTTP read error: {}", e))?;
+    
+    let mut api_response: ApiResponse = serde_json::from_str(&body)
         .map_err(|e| format!("JSON parse error: {}", e))?;
+    
+    drop(body);
     
     let now = Utc::now();
     let mut departures = Vec::with_capacity(15);

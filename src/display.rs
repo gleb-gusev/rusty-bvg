@@ -109,8 +109,8 @@ impl BvgDisplay {
             drop(lines);
         }
 
-        // Swap canvas to display
         let old_canvas = self.matrix.swap(canvas);
+
         drop(old_canvas);
     }
     
@@ -125,11 +125,13 @@ impl BvgDisplay {
     
     /// Smart word wrapping - breaks text by spaces to fit within max_width
     fn smart_wrap(&self, text: &str, max_width: usize, max_lines: usize) -> Vec<String> {
-        let words: Vec<&str> = text.split_whitespace().collect();
+        // Use split_whitespace iterator directly to avoid intermediate Vec allocation
+        let mut words = text.split_whitespace();
         let mut lines = Vec::with_capacity(max_lines);
         let mut current_line = String::with_capacity(max_width);
         
-        for word in words {
+        // Process words iterator directly
+        while let Some(word) = words.next() {
             let test_len = if current_line.is_empty() {
                 word.len()
             } else {
