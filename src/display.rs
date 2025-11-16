@@ -83,7 +83,10 @@ impl BvgDisplay {
         // Display current departure (cycling through list)
         if let Some(departure) = departures.get(self.current_index) {
             // Smart wrap: LINE + DESTINATION across multiple lines
-            let full_text = format!("{} {}", departure.line, departure.destination);
+            let mut full_text = String::with_capacity(departure.line.len() + departure.destination.len() + 1);
+            full_text.push_str(&departure.line);
+            full_text.push(' ');
+            full_text.push_str(&departure.destination);
             let lines = self.smart_wrap(&full_text, max_width, 2); // max 2 lines for destination
             
             // Draw destination lines (skip empty lines)
@@ -118,31 +121,35 @@ impl BvgDisplay {
     /// Smart word wrapping - breaks text by spaces to fit within max_width
     fn smart_wrap(&self, text: &str, max_width: usize, max_lines: usize) -> Vec<String> {
         let words: Vec<&str> = text.split_whitespace().collect();
-        let mut lines = Vec::new();
-        let mut current_line = String::new();
+        let mut lines = Vec::with_capacity(max_lines);
+        let mut current_line = String::with_capacity(max_width);
         
         for word in words {
-            let test_line = if current_line.is_empty() {
-                word.to_string()
+            let test_len = if current_line.is_empty() {
+                word.len()
             } else {
-                format!("{} {}", current_line, word)
+                current_line.len() + 1 + word.len()
             };
             
-            if test_line.len() <= max_width {
-                current_line = test_line;
+            if test_len <= max_width {
+                if !current_line.is_empty() {
+                    current_line.push(' ');
+                }
+                current_line.push_str(word);
             } else {
                 // Current line is full, start new line
                 if !current_line.is_empty() {
-                    lines.push(current_line);
-                    current_line = word.to_string();
-                } else {
-                    // Word itself is too long, truncate it
-                    lines.push(word.chars().take(max_width).collect());
-                    current_line = String::new();
+                    lines.push(std::mem::take(&mut current_line));
                 }
                 
                 if lines.len() >= max_lines {
                     break;
+                }
+                
+                if word.len() > max_width {
+                    current_line = word.chars().take(max_width).collect();
+                } else {
+                    current_line = word.to_string();
                 }
             }
         }
@@ -153,9 +160,7 @@ impl BvgDisplay {
         }
         
         // Pad with empty lines if needed
-        while lines.len() < max_lines {
-            lines.push(String::new());
-        }
+        lines.resize(max_lines, String::new());
         
         lines
     }

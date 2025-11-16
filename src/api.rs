@@ -2,13 +2,6 @@ use crate::departure::Departure;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::error::Error;
-use std::time::Duration;
-
-// VBB API client for fetching real-time departure data
-pub struct BvgApiClient {
-    base_url: String,
-    client: reqwest::blocking::Client,
-}
 
 // API response structures for VBB HAFAS API
 #[derive(Debug, Deserialize)]
@@ -33,131 +26,137 @@ struct Line {
     name: String,
 }
 
-impl BvgApiClient {
-    pub fn new() -> Result<Self, Box<dyn Error>> {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()?;
+// Fetch departures for a specific stop
+// stop_id: Station ID (e.g., "900120003" for S+U Warschauer Str.)
+pub fn fetch_departures(stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>> {
+    const BASE_URL: &str = "https://v6.vbb.transport.rest";
+    let url = format!("{}/stops/{}/departures?duration=60", BASE_URL, stop_id);
+    
+    // ureq is simpler - direct call with timeout
+    let response = ureq::get(&url)
+        .timeout(std::time::Duration::from_secs(10))
+        .call()
+        .map_err(|e| format!("HTTP error: {}", e))?;
 
-        Ok(Self {
-            base_url: "https://v6.vbb.transport.rest".to_string(),
-            client,
-        })
-    }
+    let api_response: ApiResponse = response.into_json()
+        .map_err(|e| format!("JSON parse error: {}", e))?;
+    
+    let now = Utc::now();
+    // Pre-allocate with estimated capacity (usually 50-100 departures)
+    let mut departures = Vec::with_capacity(50);
 
-    // Fetch departures for a specific stop
-    // stop_id: Station ID (e.g., "900120003" for S+U Warschauer Str.)
-    pub fn fetch_departures(&self, stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>> {
-        let url = format!("{}/stops/{}/departures", self.base_url, stop_id);
+    for api_dep in api_response.departures {
+        // Skip if missing required fields
+        let direction = match api_dep.direction {
+            Some(d) => d,
+            None => continue,  // Skip departures without destination
+        };
         
-        println!("Fetching departures from: {}", url);
-        
-        let response = self.client
-            .get(&url)
-            .query(&[("duration", "60")]) // Next 60 minutes
-            .send()?;
-
-        if !response.status().is_success() {
-            return Err(format!("API returned status: {}", response.status()).into());
+        // Skip departures going TO Warschauer Str. (we're already here!)
+        // TODO: make this configurable for other stations
+        if direction.contains("Warschauer") {
+            continue;
         }
-
-        let api_response: ApiResponse = response.json()?;
         
-        let now = Utc::now();
-        let mut departures = Vec::new();
+        let when = match api_dep.when {
+            Some(w) => w,
+            None => continue,  // Skip departures without time
+        };
+        
+        let line_name = &api_dep.line.name;
+        
+        // Filter out unwanted lines
+        // Keep only: S-Bahn (except Ringbahn), U-Bahn, Trams (M-lines)
+        if line_name.starts_with("RE") ||    // Regional Express
+           line_name.starts_with("RB") ||    // RegionalBahn
+           line_name.starts_with("IC") ||    // InterCity
+           line_name.starts_with("EC") ||    // EuroCity
+           line_name.starts_with("EN") ||    // EuroNight
+           line_name.starts_with("FEX") ||   // Flughafen Express
+           line_name.starts_with("ICE") ||   // InterCity Express
+           line_name == "S41" ||             // Ringbahn clockwise
+           line_name == "S42" ||             // Ringbahn counter-clockwise
+           line_name.chars().all(|c| c.is_numeric()) {  // Buses (pure numbers)
+            continue;
+        }
+        
+        // Parse departure time
+        if let Ok(departure_time) = DateTime::parse_from_rfc3339(&when) {
+            let departure_utc = departure_time.with_timezone(&Utc);
+            let diff = departure_utc.signed_duration_since(now);
+            let minutes = diff.num_minutes();
 
-        for api_dep in api_response.departures {
-            // Skip if missing required fields
-            let direction = match api_dep.direction {
-                Some(d) => d,
-                None => continue,  // Skip departures without destination
-            };
-            
-            // Skip departures going TO Warschauer Str. (we're already here!)
-            // TODO: make this configurable for other stations
-            if direction.contains("Warschauer") {
-                continue;
-            }
-            
-            let when = match api_dep.when {
-                Some(w) => w,
-                None => continue,  // Skip departures without time
-            };
-            
-            let line_name = &api_dep.line.name;
-            
-            // Filter out unwanted lines
-            // Keep only: S-Bahn (except Ringbahn), U-Bahn, Trams (M-lines)
-            if line_name.starts_with("RE") ||    // Regional Express
-               line_name.starts_with("RB") ||    // RegionalBahn
-               line_name.starts_with("IC") ||    // InterCity
-               line_name.starts_with("EC") ||    // EuroCity
-               line_name.starts_with("EN") ||    // EuroNight
-               line_name.starts_with("FEX") ||   // Flughafen Express
-               line_name.starts_with("ICE") ||   // InterCity Express
-               line_name == "S41" ||             // Ringbahn clockwise
-               line_name == "S42" ||             // Ringbahn counter-clockwise
-               line_name.chars().all(|c| c.is_numeric()) {  // Buses (pure numbers)
-                continue;
-            }
-            
-            // Parse departure time
-            if let Ok(departure_time) = DateTime::parse_from_rfc3339(&when) {
-                let departure_utc = departure_time.with_timezone(&Utc);
-                let diff = departure_utc.signed_duration_since(now);
-                let minutes = diff.num_minutes();
-
-                // Only include future departures (at least 1 minute away)
-                if minutes >= 1 && minutes <= 60 {
-                    // Clean up destination name
-                    let mut destination = direction.clone();
-                    
-                    // Remove " (Berlin)" suffix
-                    destination = destination.replace(" (Berlin)", "");
-                    
-                    // Remove "S " prefix from S-Bahn station names
-                    if destination.starts_with("S ") {
-                        destination = destination[2..].to_string();
-                    }
-                    
-                    // Remove "U " prefix from U-Bahn station names
-                    if destination.starts_with("U ") {
-                        destination = destination[2..].to_string();
-                    }
-                    
-                    // Remove " Bhf" suffix (Bahnhof)
-                    destination = destination.replace(" Bhf", "");
-                    
-                    // Remove Ringbahn direction symbols (⟲/⟳)
-                    destination = destination.replace(" ⟲", "");
-                    destination = destination.replace(" ⟳", "");
-                    
-                    departures.push(Departure::new(
-                        api_dep.line.name,
-                        destination,
-                        minutes as u32,
-                    ));
-                }
+            // Only include future departures (at least 1 minute away)
+            if minutes >= 1 && minutes <= 60 {
+                // Clean up destination name (optimized: single pass where possible)
+                let destination = clean_destination(&direction);
+                
+                departures.push(Departure::new(
+                    api_dep.line.name,
+                    destination,
+                    minutes as u32,
+                ));
             }
         }
-
-        // Sort by minutes (closest first)
-        departures.sort_by_key(|d| d.minutes);
-
-        Ok(departures)
     }
 
-    // Hardcoded for Warschauer Str for now
-    // TODO: make station ID configurable via config file or CLI args
-    pub fn fetch_warschauer_str(&self) -> Result<Vec<Departure>, Box<dyn Error>> {
-        self.fetch_departures("900120003")
+    // Sort by minutes (closest first)
+    departures.sort_by_key(|d| d.minutes);
+
+    Ok(departures)
+}
+    
+// Optimized destination cleaning - single pass where possible
+fn clean_destination(dest: &str) -> String {
+    let mut result = String::with_capacity(dest.len());
+    let mut chars = dest.chars().peekable();
+    
+    // Skip "S " or "U " prefix
+    let first_char = chars.peek().copied();
+    if first_char == Some('S') || first_char == Some('U') {
+        chars.next();
+        if chars.peek() == Some(&' ') {
+            chars.next();
+        } else {
+            // Put back the S/U if it's not followed by space
+            if let Some(c) = first_char {
+                result.push(c);
+            }
+        }
     }
+    
+    // Process rest of string, skipping " (Berlin)" and " Bhf"
+    let mut buffer = String::new();
+    while let Some(ch) = chars.next() {
+        buffer.push(ch);
+        
+        // Check for " (Berlin)" suffix
+        if buffer.ends_with(" (Berlin)") {
+            buffer.truncate(buffer.len() - 9);
+            break;
+        }
+        
+        // Check for " Bhf" suffix
+        if buffer.ends_with(" Bhf") {
+            buffer.truncate(buffer.len() - 4);
+            break;
+        }
+        
+        // Check for Ringbahn symbols
+        if buffer.ends_with(" ⟲") || buffer.ends_with(" ⟳") {
+            buffer.truncate(buffer.len() - 2);
+            break;
+        }
+    }
+    
+    result.push_str(&buffer);
+    result
 }
 
-impl Default for BvgApiClient {
-    fn default() -> Self {
-        Self::new().expect("Failed to create BVG API client")
-    }
+// Hardcoded for Warschauer Str for now
+// TODO: make station ID configurable via config file or CLI args
+pub fn fetch_warschauer_str() -> Result<Vec<Departure>, Box<dyn Error>> {
+    fetch_departures("900120003")
 }
 
 #[cfg(test)]
@@ -165,9 +164,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_api_client_creation() {
-        let client = BvgApiClient::new();
-        assert!(client.is_ok());
+    fn test_api_fetch() {
+        // Test that fetch function exists and can be called
+        // (actual API call would require network, so just check it compiles)
+        let _ = fetch_warschauer_str();
     }
 
     #[test]

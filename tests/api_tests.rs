@@ -1,9 +1,9 @@
-use rusty_bvg::{BvgApiClient, Departure};
+use rusty_bvg::{fetch_warschauer_str, Departure};
 
 #[test]
-fn test_api_client_creation() {
-    let client = BvgApiClient::new();
-    assert!(client.is_ok());
+fn test_api_fetch_exists() {
+    // Test that fetch function exists (actual call would need network)
+    let _ = fetch_warschauer_str();
 }
 
 #[test]

@@ -1,9 +1,22 @@
-use rusty_bvg::{BvgApiClient, Departure};
+use rusty_bvg::{fetch_warschauer_str, Departure};
 use std::thread;
 use std::time::Duration;
 
 #[cfg(feature = "display")]
 use rusty_bvg::BvgDisplay;
+
+// Helper to format time without chrono overhead
+#[cfg(feature = "display")]
+fn format_time() -> (u64, u64, u64) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let h = (now % 86400) / 3600;
+    let m = (now % 3600) / 60;
+    let s = now % 60;
+    (h, m, s)
+}
 
 // API test mode (without LED matrix)
 #[cfg(not(feature = "display"))]
@@ -12,24 +25,14 @@ fn main() {
     println!("======================================");
     println!("(Display mode disabled - run with --features display on RPi)\n");
 
-    let client = match BvgApiClient::new() {
-        Ok(c) => {
-            println!("✓ API client initialized");
-            c
-        }
-        Err(e) => {
-            eprintln!("✗ Failed to create API client: {}", e);
-            std::process::exit(1);
-        }
-    };
-
+    println!("✓ API ready");
     println!("Fetching departures every 20 seconds...");
     println!("Press Ctrl+C to exit\n");
 
     let mut last_departures: Vec<Departure> = Vec::new();
 
     loop {
-        match client.fetch_warschauer_str() {
+        match fetch_warschauer_str() {
             Ok(departures) => {
                 if !departures.is_empty() {
                     println!("\n[{}] Fetched {} departures:", 
@@ -67,17 +70,7 @@ fn main() {
     println!("BVG Live Display - Warschauer Straße");
     println!("=====================================");
 
-    // Initialize API client
-    let client = match BvgApiClient::new() {
-        Ok(c) => {
-            println!("✓ API client initialized");
-            c
-        }
-        Err(e) => {
-            eprintln!("✗ Failed to create API client: {}", e);
-            std::process::exit(1);
-        }
-    };
+    println!("✓ API ready");
 
     // Initialize display
     let mut display = match BvgDisplay::new() {
@@ -101,31 +94,27 @@ fn main() {
 
     // Fetch initial data immediately
     eprint!("\r"); // Clear any Hz stats from LED matrix
-    println!("[{}] Fetching initial data...", chrono::Local::now().format("%H:%M:%S"));
-    let mut departures: Vec<Departure> = match client.fetch_warschauer_str() {
+    let (h, m, s) = format_time();
+    println!("[{:02}:{:02}:{:02}] Fetching initial data...", h, m, s);
+    let mut departures: Vec<Departure> = match fetch_warschauer_str() {
         Ok(new_departures) => {
             if !new_departures.is_empty() {
                 let departures = new_departures.into_iter().take(3).collect::<Vec<_>>();
-                println!("[{}] ✓ Fetched {} departures", 
-                    chrono::Local::now().format("%H:%M:%S"),
-                    departures.len()
-                );
+                let (h, m, s) = format_time();
+                println!("[{:02}:{:02}:{:02}] ✓ Fetched {} departures", h, m, s, departures.len());
                 for dep in &departures {
                     println!("  - {}", dep.format());
                 }
                 departures
             } else {
-                println!("[{}] ⚠ No departures available", 
-                    chrono::Local::now().format("%H:%M:%S")
-                );
+                let (h, m, s) = format_time();
+                println!("[{:02}:{:02}:{:02}] ⚠ No departures available", h, m, s);
                 Vec::new()
             }
         }
         Err(e) => {
-            eprintln!("[{}] ✗ API Error: {}", 
-                chrono::Local::now().format("%H:%M:%S"),
-                e
-            );
+            let (h, m, s) = format_time();
+            eprintln!("[{:02}:{:02}:{:02}] ✗ API Error: {}", h, m, s, e);
             Vec::new()
         }
     };
@@ -142,30 +131,26 @@ fn main() {
         // Fetch new data every 20 seconds
         if last_fetch.elapsed() >= Duration::from_secs(20) {
             eprint!("\r"); // Clear any Hz stats from LED matrix
-            println!("[{}] Refreshing data...", chrono::Local::now().format("%H:%M:%S"));
-            match client.fetch_warschauer_str() {
+            let (h, m, s) = format_time();
+            println!("[{:02}:{:02}:{:02}] Refreshing data...", h, m, s);
+            match fetch_warschauer_str() {
                 Ok(new_departures) => {
                     if !new_departures.is_empty() {
                         departures = new_departures.into_iter().take(3).collect();
-                        println!("[{}] ✓ Fetched {} departures", 
-                            chrono::Local::now().format("%H:%M:%S"),
-                            departures.len()
-                        );
+                        let (h, m, s) = format_time();
+                        println!("[{:02}:{:02}:{:02}] ✓ Fetched {} departures", h, m, s, departures.len());
                         for dep in &departures {
                             println!("  - {}", dep.format());
                         }
                         needs_render = true; // New data, need to render
                     } else {
-                        println!("[{}] ⚠ No departures available", 
-                            chrono::Local::now().format("%H:%M:%S")
-                        );
+                        let (h, m, s) = format_time();
+                        println!("[{:02}:{:02}:{:02}] ⚠ No departures available", h, m, s);
                     }
                 }
                 Err(e) => {
-                    eprintln!("[{}] ✗ API Error: {} (using cached data)", 
-                        chrono::Local::now().format("%H:%M:%S"),
-                        e
-                    );
+                    let (h, m, s) = format_time();
+                    eprintln!("[{:02}:{:02}:{:02}] ✗ API Error: {} (using cached data)", h, m, s, e);
                 }
             }
             last_fetch = std::time::Instant::now();
@@ -177,10 +162,8 @@ fn main() {
                 display.next_departure(departures.len());
                 let current_dep = &departures[display.current_index() % departures.len()];
                 eprint!("\r"); // Clear any Hz stats from LED matrix
-                println!("[{}] Showing: {}", 
-                    chrono::Local::now().format("%H:%M:%S"),
-                    current_dep.format()
-                );
+                let (h, m, s) = format_time();
+                println!("[{:02}:{:02}:{:02}] Showing: {}", h, m, s, current_dep.format());
                 needs_render = true; // Changed departure, need to render
             }
             last_display_change = std::time::Instant::now();

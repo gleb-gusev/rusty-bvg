@@ -5,7 +5,7 @@ pub mod api;
 pub mod display;
 
 pub use departure::{Departure, get_mock_departures};
-pub use api::BvgApiClient;
+pub use api::{fetch_departures, fetch_warschauer_str};
 
 #[cfg(feature = "display")]
 pub use display::{BvgDisplay, DisplayConfig};
