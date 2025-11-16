@@ -1,4 +1,5 @@
 use rusty_bvg::{fetch_warschauer_str, Departure};
+use std::io::Write;
 use std::thread;
 use std::time::Duration;
 
@@ -168,7 +169,7 @@ fn main() {
                 let _ = std::io::stderr().flush();
                 let (h, m, s) = format_time();
                 println!("[{:02}:{:02}:{:02}] Showing: {}", h, m, s, current_dep.format());
-                let _ = io::stdout().flush();
+                let _ = std::io::stdout().flush();
                 needs_render = true; // Changed departure, need to render
             }
             last_display_change = std::time::Instant::now();
