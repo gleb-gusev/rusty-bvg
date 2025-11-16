@@ -131,8 +131,10 @@ fn main() {
         // Fetch new data every 20 seconds
         if last_fetch.elapsed() >= Duration::from_secs(20) {
             eprint!("\r"); // Clear any Hz stats from LED matrix
+            let _ = std::io::stderr().flush(); // Flush stderr to prevent buffer growth
             let (h, m, s) = format_time();
             println!("[{:02}:{:02}:{:02}] Refreshing data...", h, m, s);
+            let _ = std::io::stdout().flush(); // Flush stdout
             match fetch_warschauer_str() {
                 Ok(new_departures) => {
                     if !new_departures.is_empty() {
@@ -142,6 +144,7 @@ fn main() {
                         for dep in &departures {
                             println!("  - {}", dep.format());
                         }
+                        let _ = std::io::stdout().flush();
                         needs_render = true; // New data, need to render
                     } else {
                         let (h, m, s) = format_time();
@@ -162,8 +165,10 @@ fn main() {
                 display.next_departure(departures.len());
                 let current_dep = &departures[display.current_index() % departures.len()];
                 eprint!("\r"); // Clear any Hz stats from LED matrix
+                let _ = std::io::stderr().flush();
                 let (h, m, s) = format_time();
                 println!("[{:02}:{:02}:{:02}] Showing: {}", h, m, s, current_dep.format());
+                let _ = io::stdout().flush();
                 needs_render = true; // Changed departure, need to render
             }
             last_display_change = std::time::Instant::now();

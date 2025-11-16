@@ -30,7 +30,7 @@ struct Line {
 // stop_id: Station ID (e.g., "900120003" for S+U Warschauer Str.)
 pub fn fetch_departures(stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>> {
     const BASE_URL: &str = "https://v6.vbb.transport.rest";
-    let url = format!("{}/stops/{}/departures?duration=60", BASE_URL, stop_id);
+    let url = format!("{}/stops/{}/departures?duration=15", BASE_URL, stop_id);
     
     // ureq is simpler - direct call with timeout
     let response = ureq::get(&url)
@@ -42,10 +42,10 @@ pub fn fetch_departures(stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>>
         .map_err(|e| format!("JSON parse error: {}", e))?;
     
     let now = Utc::now();
-    // Pre-allocate with estimated capacity (usually 50-100 departures)
-    let mut departures = Vec::with_capacity(50);
+    let mut departures = Vec::with_capacity(15);
 
-    for api_dep in api_response.departures {
+    let departures_vec = api_response.departures;
+    for api_dep in departures_vec {
         // Skip if missing required fields
         let direction = match api_dep.direction {
             Some(d) => d,
@@ -86,8 +86,8 @@ pub fn fetch_departures(stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>>
             let diff = departure_utc.signed_duration_since(now);
             let minutes = diff.num_minutes();
 
-            // Only include future departures (at least 1 minute away)
-            if minutes >= 1 && minutes <= 60 {
+            // Only include future departures (at least 1 minute away, max 15 minutes)
+            if minutes >= 1 && minutes <= 15 {
                 // Clean up destination name (optimized: single pass where possible)
                 let destination = clean_destination(&direction);
                 
@@ -102,6 +102,9 @@ pub fn fetch_departures(stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>>
 
     // Sort by minutes (closest first)
     departures.sort_by_key(|d| d.minutes);
+    
+    // Shrink to fit to free unused capacity
+    departures.shrink_to_fit();
 
     Ok(departures)
 }
