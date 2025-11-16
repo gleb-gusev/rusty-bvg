@@ -1,4 +1,6 @@
-use rusty_bvg::{fetch_warschauer_str, Departure};
+use rusty_bvg::fetch_warschauer_str;
+#[cfg(debug_assertions)]
+use rusty_bvg::Departure;
 #[cfg(debug_assertions)]
 use std::io::Write;
 use std::thread;
@@ -38,8 +40,8 @@ macro_rules! debug_eprint {
     };
 }
 
-// Helper to format time without chrono overhead
-#[cfg(feature = "display")]
+// Helper to format time without chrono overhead (only used in debug mode)
+#[cfg(all(feature = "display", debug_assertions))]
 fn format_time() -> (u64, u64, u64) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -62,6 +64,7 @@ fn main() {
     debug_log!("Fetching departures every 20 seconds...");
     debug_log!("Press Ctrl+C to exit\n");
 
+    #[cfg(debug_assertions)]
     let mut last_departures: Vec<Departure> = Vec::new();
 
     loop {
@@ -77,14 +80,15 @@ fn main() {
                         for (i, dep) in departures.iter().take(3).enumerate() {
                             println!("  {}. {}", i + 1, dep.format());
                         }
+                        last_departures = departures;
                     }
-                    last_departures = departures;
                 } else {
                     debug_log!("\nNo departures found");
                 }
             }
             Err(e) => {
                 debug_eprint!("\n✗ API Error: {}", e);
+                let _ = e; // Suppress unused warning in release
                 #[cfg(debug_assertions)]
                 {
                     if !last_departures.is_empty() {
@@ -119,8 +123,11 @@ fn main() {
         }
     };
 
-    let (width, height) = display.dimensions();
-    debug_log!("✓ Display dimensions: {}x{}", width, height);
+    #[cfg(debug_assertions)]
+    {
+        let (width, height) = display.dimensions();
+        debug_log!("✓ Display dimensions: {}x{}", width, height);
+    }
     debug_log!("\nStarting live display...");
     debug_log!("  - Fetching data every 20 seconds");
     debug_log!("  - Cycling between top 3 departures every 10 seconds");
@@ -138,8 +145,11 @@ fn main() {
             if !new_departures.is_empty() {
                 let departures = new_departures.into_iter().take(3).collect::<Vec<_>>();
                 debug_log!("✓ Fetched {} departures", departures.len());
-                for dep in &departures {
-                    debug_log!("  - {}", dep.format());
+                #[cfg(debug_assertions)]
+                {
+                    for dep in &departures {
+                        debug_log!("  - {}", dep.format());
+                    }
                 }
                 departures
             } else {
@@ -149,6 +159,7 @@ fn main() {
         }
         Err(e) => {
             debug_eprint!("✗ API Error: {}", e);
+            let _ = e; // Suppress unused warning in release
             Vec::new()
         }
     };
@@ -184,8 +195,11 @@ fn main() {
                         }
                         departures = new_departures;
                         debug_log!("✓ Fetched {} departures", departures.len());
-                        for dep in &departures {
-                            debug_log!("  - {}", dep.format());
+                        #[cfg(debug_assertions)]
+                        {
+                            for dep in &departures {
+                                debug_log!("  - {}", dep.format());
+                            }
                         }
                         #[cfg(debug_assertions)]
                         {
@@ -198,6 +212,7 @@ fn main() {
                 }
                 Err(e) => {
                     debug_eprint!("✗ API Error: {} (using cached data)", e);
+                    let _ = e; // Suppress unused warning in release
                 }
             }
             last_fetch = std::time::Instant::now();
@@ -207,13 +222,13 @@ fn main() {
         if last_display_change.elapsed() >= Duration::from_secs(10) {
             if departures.len() > 1 {
                 display.next_departure(departures.len());
-                let current_dep = &departures[display.current_index() % departures.len()];
                 #[cfg(debug_assertions)]
                 {
+                    let current_dep = &departures[display.current_index() % departures.len()];
                     eprint!("\r");
                     let _ = std::io::stderr().flush();
+                    debug_log!("Showing: {}", current_dep.format());
                 }
-                debug_log!("Showing: {}", current_dep.format());
                 #[cfg(debug_assertions)]
                 {
                     let _ = std::io::stdout().flush();
