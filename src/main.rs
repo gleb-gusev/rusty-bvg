@@ -1,10 +1,42 @@
 use rusty_bvg::{fetch_warschauer_str, Departure};
+#[cfg(debug_assertions)]
 use std::io::Write;
 use std::thread;
 use std::time::Duration;
 
 #[cfg(feature = "display")]
 use rusty_bvg::BvgDisplay;
+
+// Debug logging macros - only compile in debug mode
+#[cfg(debug_assertions)]
+macro_rules! debug_log {
+    ($($arg:tt)*) => {
+        println!($($arg)*);
+    };
+}
+
+#[cfg(not(debug_assertions))]
+#[allow(unused_macros)]
+macro_rules! debug_log {
+    ($($arg:tt)*) => {
+        // No-op in release mode
+    };
+}
+
+#[cfg(debug_assertions)]
+macro_rules! debug_eprint {
+    ($($arg:tt)*) => {
+        eprintln!($($arg)*);
+    };
+}
+
+#[cfg(not(debug_assertions))]
+#[allow(unused_macros)]
+macro_rules! debug_eprint {
+    ($($arg:tt)*) => {
+        // No-op in release mode
+    };
+}
 
 // Helper to format time without chrono overhead
 #[cfg(feature = "display")]
@@ -22,13 +54,13 @@ fn format_time() -> (u64, u64, u64) {
 // API test mode (without LED matrix)
 #[cfg(not(feature = "display"))]
 fn main() {
-    println!("BVG API Test Mode - Warschauer Straße");
-    println!("======================================");
-    println!("(Display mode disabled - run with --features display on RPi)\n");
+    debug_log!("BVG API Test Mode - Warschauer Straße");
+    debug_log!("======================================");
+    debug_log!("(Display mode disabled - run with --features display on RPi)\n");
 
-    println!("✓ API ready");
-    println!("Fetching departures every 20 seconds...");
-    println!("Press Ctrl+C to exit\n");
+    debug_log!("✓ API ready");
+    debug_log!("Fetching departures every 20 seconds...");
+    debug_log!("Press Ctrl+C to exit\n");
 
     let mut last_departures: Vec<Departure> = Vec::new();
 
@@ -36,27 +68,28 @@ fn main() {
         match fetch_warschauer_str() {
             Ok(departures) => {
                 if !departures.is_empty() {
-                    println!("\n[{}] Fetched {} departures:", 
-                        chrono::Local::now().format("%H:%M:%S"), 
-                        departures.len()
-                    );
-                    for (i, dep) in departures.iter().take(3).enumerate() {
-                        println!("  {}. {}", i + 1, dep.format());
+                    #[cfg(debug_assertions)]
+                    {
+                        println!("\n[{}] Fetched {} departures:", 
+                            chrono::Local::now().format("%H:%M:%S"), 
+                            departures.len()
+                        );
+                        for (i, dep) in departures.iter().take(3).enumerate() {
+                            println!("  {}. {}", i + 1, dep.format());
+                        }
                     }
                     last_departures = departures;
                 } else {
-                    println!("\n[{}] No departures found", 
-                        chrono::Local::now().format("%H:%M:%S")
-                    );
+                    debug_log!("\nNo departures found");
                 }
             }
             Err(e) => {
-                eprintln!("\n[{}] ✗ API Error: {}", 
-                    chrono::Local::now().format("%H:%M:%S"), 
-                    e
-                );
-                if !last_departures.is_empty() {
-                    println!("  (Using cached data)");
+                debug_eprint!("\n✗ API Error: {}", e);
+                #[cfg(debug_assertions)]
+                {
+                    if !last_departures.is_empty() {
+                        println!("  (Using cached data)");
+                    }
                 }
             }
         }
@@ -68,15 +101,15 @@ fn main() {
 // Full mode with LED display (RPi)
 #[cfg(feature = "display")]
 fn main() {
-    println!("BVG Live Display - Warschauer Straße");
-    println!("=====================================");
+    debug_log!("BVG Live Display - Warschauer Straße");
+    debug_log!("=====================================");
 
-    println!("✓ API ready");
+    debug_log!("✓ API ready");
 
     // Initialize display
     let mut display = match BvgDisplay::new() {
         Ok(d) => {
-            println!("✓ Display initialized");
+            debug_log!("✓ Display initialized");
             d
         }
         Err(e) => {
@@ -87,35 +120,35 @@ fn main() {
     };
 
     let (width, height) = display.dimensions();
-    println!("✓ Display dimensions: {}x{}", width, height);
-    println!("\nStarting live display...");
-    println!("  - Fetching data every 20 seconds");
-    println!("  - Cycling between top 3 departures every 10 seconds");
-    println!("Press Ctrl+C to exit\n");
+    debug_log!("✓ Display dimensions: {}x{}", width, height);
+    debug_log!("\nStarting live display...");
+    debug_log!("  - Fetching data every 20 seconds");
+    debug_log!("  - Cycling between top 3 departures every 10 seconds");
+    debug_log!("Press Ctrl+C to exit\n");
 
     // Fetch initial data immediately
-    eprint!("\r"); // Clear any Hz stats from LED matrix
-    let (h, m, s) = format_time();
-    println!("[{:02}:{:02}:{:02}] Fetching initial data...", h, m, s);
+    #[cfg(debug_assertions)]
+    {
+        eprint!("\r");
+        let _ = std::io::stderr().flush();
+    }
+    debug_log!("Fetching initial data...");
     let mut departures: Vec<Departure> = match fetch_warschauer_str() {
         Ok(new_departures) => {
             if !new_departures.is_empty() {
                 let departures = new_departures.into_iter().take(3).collect::<Vec<_>>();
-                let (h, m, s) = format_time();
-                println!("[{:02}:{:02}:{:02}] ✓ Fetched {} departures", h, m, s, departures.len());
+                debug_log!("✓ Fetched {} departures", departures.len());
                 for dep in &departures {
-                    println!("  - {}", dep.format());
+                    debug_log!("  - {}", dep.format());
                 }
                 departures
             } else {
-                let (h, m, s) = format_time();
-                println!("[{:02}:{:02}:{:02}] ⚠ No departures available", h, m, s);
+                debug_log!("⚠ No departures available");
                 Vec::new()
             }
         }
         Err(e) => {
-            let (h, m, s) = format_time();
-            eprintln!("[{:02}:{:02}:{:02}] ✗ API Error: {}", h, m, s, e);
+            debug_eprint!("✗ API Error: {}", e);
             Vec::new()
         }
     };
@@ -131,30 +164,40 @@ fn main() {
     loop {
         // Fetch new data every 20 seconds
         if last_fetch.elapsed() >= Duration::from_secs(20) {
-            eprint!("\r"); // Clear any Hz stats from LED matrix
-            let _ = std::io::stderr().flush(); // Flush stderr to prevent buffer growth
-            let (h, m, s) = format_time();
-            println!("[{:02}:{:02}:{:02}] Refreshing data...", h, m, s);
-            let _ = std::io::stdout().flush(); // Flush stdout
+            #[cfg(debug_assertions)]
+            {
+                eprint!("\r");
+                let _ = std::io::stderr().flush();
+            }
+            debug_log!("Refreshing data...");
+            #[cfg(debug_assertions)]
+            {
+                let _ = std::io::stdout().flush();
+            }
             match fetch_warschauer_str() {
-                Ok(new_departures) => {
+                Ok(mut new_departures) => {
                     if !new_departures.is_empty() {
-                        departures = new_departures.into_iter().take(3).collect();
-                        let (h, m, s) = format_time();
-                        println!("[{:02}:{:02}:{:02}] ✓ Fetched {} departures", h, m, s, departures.len());
-                        for dep in &departures {
-                            println!("  - {}", dep.format());
+                        // Take only first 3 and immediately free the rest
+                        if new_departures.len() > 3 {
+                            new_departures.truncate(3);
+                            new_departures.shrink_to_fit();
                         }
-                        let _ = std::io::stdout().flush();
+                        departures = new_departures;
+                        debug_log!("✓ Fetched {} departures", departures.len());
+                        for dep in &departures {
+                            debug_log!("  - {}", dep.format());
+                        }
+                        #[cfg(debug_assertions)]
+                        {
+                            let _ = std::io::stdout().flush();
+                        }
                         needs_render = true; // New data, need to render
                     } else {
-                        let (h, m, s) = format_time();
-                        println!("[{:02}:{:02}:{:02}] ⚠ No departures available", h, m, s);
+                        debug_log!("⚠ No departures available");
                     }
                 }
                 Err(e) => {
-                    let (h, m, s) = format_time();
-                    eprintln!("[{:02}:{:02}:{:02}] ✗ API Error: {} (using cached data)", h, m, s, e);
+                    debug_eprint!("✗ API Error: {} (using cached data)", e);
                 }
             }
             last_fetch = std::time::Instant::now();
@@ -165,11 +208,16 @@ fn main() {
             if departures.len() > 1 {
                 display.next_departure(departures.len());
                 let current_dep = &departures[display.current_index() % departures.len()];
-                eprint!("\r"); // Clear any Hz stats from LED matrix
-                let _ = std::io::stderr().flush();
-                let (h, m, s) = format_time();
-                println!("[{:02}:{:02}:{:02}] Showing: {}", h, m, s, current_dep.format());
-                let _ = std::io::stdout().flush();
+                #[cfg(debug_assertions)]
+                {
+                    eprint!("\r");
+                    let _ = std::io::stderr().flush();
+                }
+                debug_log!("Showing: {}", current_dep.format());
+                #[cfg(debug_assertions)]
+                {
+                    let _ = std::io::stdout().flush();
+                }
                 needs_render = true; // Changed departure, need to render
             }
             last_display_change = std::time::Instant::now();

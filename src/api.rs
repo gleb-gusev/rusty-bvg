@@ -38,13 +38,16 @@ pub fn fetch_departures(stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>>
         .call()
         .map_err(|e| format!("HTTP error: {}", e))?;
 
-    let api_response: ApiResponse = response.into_json()
+    let mut api_response: ApiResponse = response.into_json()
         .map_err(|e| format!("JSON parse error: {}", e))?;
     
     let now = Utc::now();
     let mut departures = Vec::with_capacity(15);
 
-    let departures_vec = api_response.departures;
+    // Extract and immediately drop api_response to free memory
+    let departures_vec = std::mem::take(&mut api_response.departures);
+    drop(api_response); // Explicitly free ApiResponse struct
+    
     for api_dep in departures_vec {
         // Skip if missing required fields
         let direction = match api_dep.direction {
@@ -103,7 +106,7 @@ pub fn fetch_departures(stop_id: &str) -> Result<Vec<Departure>, Box<dyn Error>>
     // Sort by minutes (closest first)
     departures.sort_by_key(|d| d.minutes);
     
-    // Shrink to fit to free unused capacity
+    // Shrink to fit to free unused capacity immediately
     departures.shrink_to_fit();
 
     Ok(departures)
