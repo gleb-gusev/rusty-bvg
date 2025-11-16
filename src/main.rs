@@ -1,5 +1,5 @@
 use rusty_bvg::fetch_warschauer_str;
-#[cfg(debug_assertions)]
+#[allow(unused_imports)]
 use rusty_bvg::Departure;
 #[cfg(debug_assertions)]
 use std::io::Write;
